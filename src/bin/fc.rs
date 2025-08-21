@@ -16,8 +16,7 @@ pub async fn run(transport: Transport) {
   let link: Arc<tokio::sync::Mutex<Option<Arc<tokio::sync::Mutex<Link>>>>> =
     Arc::new(tokio::sync::Mutex::new(None));
   let server_destination =
-    // FIXME: correct dest
-    match AddressHash::new_from_hex_string("904155e11b5707779d454fcf0405f34c") {
+    match AddressHash::new_from_hex_string("5285c511344e3b5b3a765229554e4da9") {
       Ok(dest) => dest,
       Err(err) => {
         log::error!("error parsing server destination hash: {err:?}");
