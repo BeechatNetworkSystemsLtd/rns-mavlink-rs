@@ -100,6 +100,8 @@ pub async fn run(transport: Transport) {
 
 #[tokio::main]
 async fn main() {
+  // init logging
+  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("TRACE")).init();
   // start reticulum
   let id = PrivateIdentity::new_from_name("mavlink-rns-fc");
   let transport = Transport::new(TransportConfig::new("fc", &id, true));
