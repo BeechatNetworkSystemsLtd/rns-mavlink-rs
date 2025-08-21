@@ -23,11 +23,32 @@ pub async fn run(mut transport: Transport, id: PrivateIdentity) {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
   };
   let link_id: Arc<tokio::sync::Mutex<Option<LinkId>>> = Arc::new(tokio::sync::Mutex::new(None));
+  let socket = UdpSocket::bind("0.0.0.0:9999").await.unwrap();
   // socket loop
   let socket_loop = async || {
+    log::info!("Listening for UDP packets on port 9999...");
+    let mut buf = vec![0u8; 1024];
     loop {
-      log::warn!("TODO: socket listen to QGC");
-      tokio::time::sleep(time::Duration::from_secs(1)).await;
+      match socket.recv_from(&mut buf).await {
+        Ok((size, src)) => {
+          let data = &buf[..size];
+          match str::from_utf8(data) {
+            Ok(text) => log::trace!("Received from {}: {}", src, text),
+            Err(_) => log::trace!("Received non-UTF8 data from {}: {:?}", src, data),
+          }
+          let link_id = link_id.lock().await;
+          if let Some(link_id) = link_id.as_ref() {
+            log::trace!("sending on link ({})", link_id);
+            let link = transport.find_in_link(link_id).await.unwrap();
+            let link = link.lock().await;
+            let packet = link.data_packet(data).unwrap();
+            transport.send_packet(packet).await;
+          }
+        }
+        Err(e) => {
+          log::error!("Error receiving packet: {}", e);
+        }
+      }
     }
   };
   // upstream link data
@@ -41,20 +62,18 @@ pub async fn run(mut transport: Transport, id: PrivateIdentity) {
         }
       };
     let mut in_link_events = transport.in_link_events();
+    let target = "127.0.0.1:14550";
     while let Ok(link_event) = in_link_events.recv().await {
       match link_event.event {
         LinkEvent::Data(payload) => if link_event.address_hash == in_destination_hash {
           log::trace!("link {} payload ({})", link_event.id, payload.len());
-          log::warn!("TODO: send to QGC port 14550");
-          /*
-          match socket.send(payload.as_slice()).await {
-            Ok(n) => log::trace!("tun sent {n} bytes"),
+          match socket.send_to(payload.as_slice(), target).await {
+            Ok(n) => log::trace!("socket sent {n} bytes"),
             Err(err) => {
-              log::error!("tun error sending bytes: {err:?}");
+              log::error!("socket error sending bytes: {err:?}");
               break
             }
           }
-          */
         }
         LinkEvent::Activated => if link_event.address_hash == in_destination_hash {
           log::debug!("link activated {}", link_event.id);
@@ -78,7 +97,7 @@ pub async fn run(mut transport: Transport, id: PrivateIdentity) {
 #[tokio::main]
 async fn main() {
   // init logging
-  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("TRACE")).init();
+  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("DEBUG")).init();
   // start reticulum
   log::info!("starting reticulum");
   let id = PrivateIdentity::new_from_name("mavlink-rns-server");
