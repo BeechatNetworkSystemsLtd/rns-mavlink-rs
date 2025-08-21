@@ -32,9 +32,8 @@ pub async fn run(mut transport: Transport, id: PrivateIdentity) {
   };
   // upstream link data
   let link_loop = async || {
-    // TODO: in link address is the server, can we check the upstream address?
     let _client_destination =
-      match AddressHash::new_from_hex_string("a05700f0593d63a92324bcfdcf14e6f4") {
+      match AddressHash::new_from_hex_string("2a2ec986877560e660b9b7d401f41531") {
         Ok(dest) => dest,
         Err(err) => {
           log::error!("error parsing client destination hash: {err:?}");
