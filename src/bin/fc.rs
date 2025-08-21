@@ -9,6 +9,7 @@ use reticulum::destination::{DestinationName, SingleInputDestination};
 use reticulum::destination::link::{Link, LinkEvent, LinkId};
 use reticulum::identity::PrivateIdentity;
 use reticulum::iface::tcp_client::TcpClient;
+use reticulum::iface::udp::UdpInterface;
 use reticulum::transport::{Transport, TransportConfig};
 use reticulum::hash::AddressHash;
 
@@ -49,6 +50,7 @@ pub async fn run(transport: Transport) {
                 Ok(text) => log::trace!("Received from {}: {}", src, text),
                 Err(_) => log::trace!("Received non-UTF8 data from {}: {:?}", src, data),
               }
+              /*FIXME:debug*/ //log::warn!("SENDING LINK DATA");
               transport.send_to_all_out_links(data).await;
             }
             Err(e) => {
@@ -78,10 +80,11 @@ pub async fn run(transport: Transport) {
           }
         }
         LinkEvent::Activated => if link_event.address_hash == server_destination {
-          log::debug!("link activated {}", link_event.id);
+          log::info!("link activated {}", link_event.id);
         }
         LinkEvent::Closed => if link_event.address_hash == server_destination {
-          log::debug!("link closed {}", link_event.id);
+          log::warn!("link closed {}", link_event.id);
+          let _ = link.lock().await.take();
         }
       }
     }
@@ -102,8 +105,11 @@ async fn main() {
   // start reticulum
   let id = PrivateIdentity::new_from_name("mavlink-rns-fc");
   let transport = Transport::new(TransportConfig::new("fc", &id, true));
-  let _ = transport.iface_manager().lock().await
-    .spawn(TcpClient::new("192.168.1.131:4242"), TcpClient::spawn);
+  let _ = transport.iface_manager().lock().await.spawn(
+    UdpInterface::new("0.0.0.0:4243", Some("192.168.1.131:4242")),
+    UdpInterface::spawn);
+    //TcpClient::new("192.168.1.131:4242"),
+    //TcpClient::spawn);
   let destination = SingleInputDestination::new(id, DestinationName::new("mavlink_rns", "client"));
   log::info!("created destination: {}", destination.desc.address_hash);
   run(transport).await
