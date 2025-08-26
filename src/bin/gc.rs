@@ -92,7 +92,8 @@ pub async fn run(mut transport: Transport, id: PrivateIdentity) {
             *link_id = Some(link_event.id);
           }
           LinkEvent::Closed => if link_event.address_hash == in_destination_hash {
-            log::warn!("link closed {}", link_event.id)
+            log::warn!("link closed {}", link_event.id);
+            let _ = link_id.lock().await.take();
           }
         }
         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -122,7 +123,8 @@ async fn main() {
   let id = PrivateIdentity::new_from_name("mavlink-rns-server");
   let transport = Transport::new(TransportConfig::new("server", &id, true));
   let _ = transport.iface_manager().lock().await.spawn(
-    UdpInterface::new("0.0.0.0:4242", Some("192.168.1.135:4243")),
+    //UdpInterface::new("0.0.0.0:4242", Some("192.168.1.135:4243")),
+    UdpInterface::new("0.0.0.0:4242", Some("127.0.0.1:4243")),
     UdpInterface::spawn,
     //TcpServer::new(format!("0.0.0.0:{}", 4242), transport.iface_manager()),
     //TcpServer::spawn,

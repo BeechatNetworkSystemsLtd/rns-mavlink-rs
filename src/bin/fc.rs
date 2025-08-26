@@ -1,19 +1,19 @@
-use std::str;
 use std::sync::Arc;
 use std::time;
 
 use log;
-use tokio::net::UdpSocket;
+use tokio_serial;
 
 use reticulum::destination::{DestinationName, SingleInputDestination};
-use reticulum::destination::link::{Link, LinkEvent, LinkId};
+use reticulum::destination::link::{Link, LinkEvent};
 use reticulum::identity::PrivateIdentity;
-use reticulum::iface::tcp_client::TcpClient;
 use reticulum::iface::udp::UdpInterface;
 use reticulum::transport::{Transport, TransportConfig};
 use reticulum::hash::AddressHash;
 
 pub async fn run(transport: Transport) {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  use tokio_serial::SerialPortBuilderExt;
   let link: Arc<tokio::sync::Mutex<Option<Arc<tokio::sync::Mutex<Link>>>>> =
     Arc::new(tokio::sync::Mutex::new(None));
   let server_destination =
@@ -24,7 +24,10 @@ pub async fn run(transport: Transport) {
         return
       }
     };
-  let socket = UdpSocket::bind("0.0.0.0:14550").await.unwrap();
+  let port = tokio_serial::new("/dev/ttyACM0", 115200)
+    .open_native_async()
+    .unwrap();
+  let (mut port_reader, mut port_writer) = tokio::io::split(port);
   // set up links
   let link_loop = async || {
     let mut announce_recv = transport.recv_announces().await;
@@ -36,22 +39,22 @@ pub async fn run(transport: Transport) {
       }
     }
   };
-  // listen to socket and forward to links
-  let read_socket_loop = async || {
+  // read serial port and forward to links
+  let mut read_port_loop = async || {
     loop {
       if let Some(_link) = link.lock().await.as_ref() {
-        log::info!("Listening for UDP packets on port 14550...");
-        let mut buf = vec![0u8; 1024];
+        log::info!("Reading from serial port ttyACM0...");
+        let mut buf = vec![0u8; 2usize.pow(16)];
         loop {
-          match socket.recv_from(&mut buf).await {
-            Ok((size, src)) => {
-              let data = &buf[..size];
-              match str::from_utf8(data) {
-                Ok(text) => log::trace!("Received from {}: {}", src, text),
-                Err(_) => log::trace!("Received non-UTF8 data from {}: {:?}", src, data),
+          match port_reader.read(&mut buf).await {
+            Ok(n) => {
+              log::trace!("Read {n} bytes");
+
+              for data in buf[..n].chunks(reticulum::packet::PACKET_MDU / 2) {
+                /*FIXME:debug*/ //log::warn!("SENDING LINK DATA");
+                println!("DATA LEN: {}", data.len());
+                transport.send_to_all_out_links(data).await;
               }
-              /*FIXME:debug*/ //log::warn!("SENDING LINK DATA");
-              transport.send_to_all_out_links(data).await;
             }
             Err(e) => {
               log::error!("Error receiving packet: {}", e);
@@ -63,18 +66,17 @@ pub async fn run(transport: Transport) {
       }
     }
   };
-  // forward upstream link messages to socket
-  let write_socket_loop = async || {
+  // forward upstream link messages to serial port
+  let mut write_port_loop = async || {
     let mut out_link_events = transport.out_link_events();
-    let target = "127.0.0.1:18570";
     while let Ok(link_event) = out_link_events.recv().await {
       match link_event.event {
         LinkEvent::Data(payload) => if link_event.address_hash == server_destination {
           log::trace!("link {} payload ({})", link_event.id, payload.len());
-          match socket.send_to(payload.as_slice(), target).await {
-            Ok(n) => log::trace!("socket sent {n} bytes"),
+          match port_writer.write_all(payload.as_slice()).await {
+            Ok(()) => log::trace!("port sent {} bytes", payload.len()),
             Err(err) => {
-              log::error!("socket error sending bytes: {err:?}");
+              log::error!("port error sending bytes: {err:?}");
               break
             }
           }
@@ -91,8 +93,8 @@ pub async fn run(transport: Transport) {
   };
   // run
   tokio::select!{
-    _ = read_socket_loop() => log::info!("read socket loop exited: shutting down"),
-    _ = write_socket_loop() => log::info!("write socket loop exited: shutting down"),
+    _ = read_port_loop() => log::info!("read port loop exited: shutting down"),
+    _ = write_port_loop() => log::info!("write port loop exited: shutting down"),
     _ = link_loop() => log::info!("link loop exited: shutting down"),
     _ = tokio::signal::ctrl_c() => log::info!("got ctrl-c: shutting down")
   }
@@ -101,15 +103,14 @@ pub async fn run(transport: Transport) {
 #[tokio::main]
 async fn main() {
   // init logging
-  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("DEBUG")).init();
+  env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("TRACE")).init();
   // start reticulum
   let id = PrivateIdentity::new_from_name("mavlink-rns-fc");
   let transport = Transport::new(TransportConfig::new("fc", &id, true));
   let _ = transport.iface_manager().lock().await.spawn(
-    UdpInterface::new("0.0.0.0:4243", Some("192.168.1.131:4242")),
+    //UdpInterface::new("0.0.0.0:4243", Some("192.168.1.131:4242")),
+    UdpInterface::new("0.0.0.0:4243", Some("127.0.0.1:4242")),
     UdpInterface::spawn);
-    //TcpClient::new("192.168.1.131:4242"),
-    //TcpClient::spawn);
   let destination = SingleInputDestination::new(id, DestinationName::new("mavlink_rns", "client"));
   log::info!("created destination: {}", destination.desc.address_hash);
   run(transport).await

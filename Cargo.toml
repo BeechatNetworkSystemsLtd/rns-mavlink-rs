@@ -1,14 +1,14 @@
 [package]
-name = "mavlink-demo"
+name = "rns-mavlink"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 env_logger = "0.11.*"
 log = "0.4.*"
+tokio-serial = "5.*"
 tokio = { version = "1.*", features = ["full"] }
 
 [dependencies.reticulum]
 git = "https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs"
-#path = "/home/spearman/rs/remote/Reticulum-rs"
 version = "0.1.*"
