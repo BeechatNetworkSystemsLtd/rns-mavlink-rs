@@ -1,0 +1,4 @@
+log_level = "debug"
+qgc_udp_address = "127.0.0.1:14550"
+qgc_reply_port = 9999
+fc_destination = "db332f13541eb2e4b47d02923fbbcb9a"

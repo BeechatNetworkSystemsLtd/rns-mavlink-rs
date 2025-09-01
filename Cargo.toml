@@ -1,13 +1,18 @@
 [package]
 name = "rns-mavlink"
+description = "Reticulum Mavlink bridge"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
 
 [dependencies]
+clap = { version= "4.*", features= ["derive"] }
 env_logger = "0.11.*"
 log = "0.4.*"
+serde = { version = "1.*", features = ["derive"] }
 tokio-serial = "5.*"
 tokio = { version = "1.*", features = ["full"] }
+toml = "0.8.*"
 
 [dependencies.reticulum]
 git = "https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs"
