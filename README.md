@@ -23,11 +23,11 @@ Additional configuration such as serial device and QGroundControl ports are set 
 The `gc` application runs on a system that can communicate with QGroundControl via UDP
 (either locally or over internet). Configuration is as follows:
 
--`qgc_udp_address` -- UDP address:port where QGroundControl is reachable, example:
+- `qgc_udp_address` -- UDP address:port where QGroundControl is reachable, example:
   `"127.0.0.1:14550"`
--`qgc_reply_port` -- local UDP port where QGroundControl will send replies, example:
+- `qgc_reply_port` -- local UDP port where QGroundControl will send replies, example:
   `9999`
--`fc_destination` -- Reticulum address hash of the fc node, example:
+- `fc_destination` -- Reticulum address hash of the fc node, example:
   `"db332f13541eb2e4b47d02923fbbcb9a"`
 
 The `fc` application runs on a system that is connected to a flight controller via
