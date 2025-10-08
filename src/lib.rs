@@ -1,9 +1,9 @@
-use std::time;
 use std::sync::Arc;
 
 use serde::Deserialize;
 use tokio;
 use tokio::net::UdpSocket;
+use tokio::time::Duration;
 
 use reticulum::destination::DestinationName;
 use reticulum::destination::link::{Link, LinkEvent, LinkId};
@@ -63,7 +63,7 @@ impl Gc {
     // send announces
     let announce_loop = async || loop {
       transport.send_announce(&in_destination, None).await;
-      tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      tokio::time::sleep(Duration::from_secs(1)).await;
     };
     let link_id: Arc<tokio::sync::Mutex<Option<LinkId>>> =
       Arc::new(tokio::sync::Mutex::new(None));

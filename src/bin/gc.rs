@@ -5,7 +5,8 @@ use log;
 use toml;
 
 use reticulum::identity::PrivateIdentity;
-use reticulum::iface::udp::UdpInterface;
+use reticulum::iface::kaonic::kaonic_grpc::KaonicGrpc;
+use reticulum::iface::kaonic::{RadioConfig, RadioModule};
 use reticulum::transport::{Transport, TransportConfig};
 
 use rns_mavlink;
@@ -16,10 +17,8 @@ const CONFIG_PATH: &str = "Gc.toml";
 #[derive(Parser)]
 #[clap(name = "Rns-Mavlink Ground Control Bridge", version)]
 pub struct Command {
-  #[clap(short = 'p', help = "Reticulum UDP listen port number")]
-  pub port: u16,
-  #[clap(short = 'f', help = "Reticulum UDP forward link address")]
-  pub forward: std::net::SocketAddr
+  #[clap(short = 'a', help = "Reticulum Kaonic gRPC address")]
+  pub address: String
 }
 
 #[tokio::main]
@@ -37,7 +36,7 @@ async fn main() {
   // init logging
   env_logger::Builder::from_env(env_logger::Env::default()
     .default_filter_or(&config.log_level)).init();
-  log::info!("gc start with RNS port {} and forward node {}", cmd.port, cmd.forward);
+  log::info!("gc start with RNS Kaonic gRPC address {}", cmd.address);
   // mavlink bridge
   let gc = rns_mavlink::Gc::new(config);
   // start reticulum
@@ -45,8 +44,8 @@ async fn main() {
   let id = PrivateIdentity::new_from_name("mavlink-rns-gc");
   let transport = Transport::new(TransportConfig::new("gc", &id, true));
   let _ = transport.iface_manager().lock().await.spawn(
-    UdpInterface::new(format!("0.0.0.0:{}", cmd.port), Some(cmd.forward.to_string())),
-    UdpInterface::spawn);
+    KaonicGrpc::new(cmd.address, RadioConfig::new_for_module(RadioModule::RadioA), None),
+    KaonicGrpc::spawn);
   if let Err(err) = gc.run(transport, id).await {
     log::error!("gc bridge exited with error: {:?}", err);
   } else {

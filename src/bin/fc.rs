@@ -3,7 +3,8 @@ use log;
 
 use reticulum::destination::{DestinationName, SingleInputDestination};
 use reticulum::identity::PrivateIdentity;
-use reticulum::iface::udp::UdpInterface;
+use reticulum::iface::kaonic::kaonic_grpc::KaonicGrpc;
+use reticulum::iface::kaonic::{RadioConfig, RadioModule};
 use reticulum::transport::{Transport, TransportConfig};
 
 use rns_mavlink;
@@ -14,10 +15,8 @@ const CONFIG_PATH: &str = "Fc.toml";
 #[derive(Parser)]
 #[clap(name = "Rns-Mavlink Flight Controller Bridge", version)]
 pub struct Command {
-  #[clap(short = 'p', help = "Reticulum UDP listen port number")]
-  pub port: u16,
-  #[clap(short = 'f', help = "Reticulum UDP forward link address")]
-  pub forward: std::net::SocketAddr
+  #[clap(short = 'a', help = "Reticulum Kaonic gRPC address")]
+  pub address: String
 }
 
 #[tokio::main]
@@ -35,7 +34,7 @@ async fn main() {
   // init logging
   env_logger::Builder::from_env(env_logger::Env::default()
     .default_filter_or(&config.log_level)).init();
-  log::info!("fc start with RNS port {} and forward node {}", cmd.port, cmd.forward);
+  log::info!("fc start with RNS kaonic grpc address {}", cmd.address);
   // mavlink bridge
   let fc = match rns_mavlink::Fc::new(config) {
     Ok(fc) => fc,
@@ -49,8 +48,8 @@ async fn main() {
   let id = PrivateIdentity::new_from_name("mavlink-rns-fc");
   let transport = Transport::new(TransportConfig::new("fc", &id, true));
   let _ = transport.iface_manager().lock().await.spawn(
-    UdpInterface::new(format!("0.0.0.0:{}", cmd.port), Some(cmd.forward.to_string())),
-    UdpInterface::spawn);
+    KaonicGrpc::new(cmd.address, RadioConfig::new_for_module(RadioModule::RadioA), None),
+    KaonicGrpc::spawn);
   let destination =
     SingleInputDestination::new(id, DestinationName::new("rns_mavlink", "fc"));
   log::info!("created destination: {}", destination.desc.address_hash);
