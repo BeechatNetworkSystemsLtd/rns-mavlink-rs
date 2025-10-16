@@ -1,4 +1,4 @@
 log_level = "debug"
-serial_port = "/dev/ttyACM0"
-serial_baud = 115200
+serial_port = "/dev/ttySTM1"
+serial_baud = 57600
 gc_destination = "758727c1d044e1fd8a838dc8d1832e95"
