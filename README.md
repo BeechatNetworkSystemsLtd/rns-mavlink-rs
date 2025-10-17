@@ -80,3 +80,12 @@ The output `fc` and `gc` binaries will be in
 `target/armv7-unknown-linux-gnueabihf/debug/` or
 `target/armv7-unknown-linux-gnueabihf/release/` depending on the flags provided to the
 build command.
+
+### Kaonic installation
+
+Copy the `fc` and `gc` binaries into `/home/root/fc/` and `/home/root/gc/` on the target
+systems, together with `Fc.toml` and `Gc.toml` configuration files. On the flight
+controller system, install the `rns-mavlnk-fc.service` file into `/etc/systemd/system/`
+and run `systemctl daemon-reload` and `systemctl enable rns-mavlink-fc.service` to
+enable start on boot. To start the service manually `systemctl start
+rns-mavlink-fc.service`.
