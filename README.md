@@ -43,3 +43,40 @@ The provided `fc` and `gc` binaries initialize UDP interfaces for next-hop commu
 over Reticulum. The `rns_mavlink` library can be used with other Reticulum
 configurations by initializing your own `Transport` instance and passing as an argument
 to the `Fc` and `Gc` structs when running.
+
+## Kaonic build
+
+Build the docker image from this repository
+<https://github.com/BeechatNetworkSystemsLtd/kaonic-radio/blob/main/Dockerfile>:
+```
+docker build --platform linux/arm64 -t kaonicradioimage .
+```
+In the Dockerfile there are lines commented-out to set up the Yocto SDK. You can try
+un-commenting those lines to get the SDK installed in the image. If not you will have to
+run those same commands inside the container.
+
+Run the container:
+```
+docker run -dit --rm --net=host --platform linux/arm64 --name kaonicradiocontainer \
+  kaonicradioimage bash
+```
+
+The container will remain running and you can enter the container with:
+```
+docker exec -ti kaonicradiocontainer bash
+```
+
+Clone this repository and checkout the `kaonic-build` branch:
+```
+git clone https://github.com/BeechatNetworkSystemsLtd/rns-mavlink-rs rns-mavlink
+cd rns-mavlink
+git checkout -t origin/kaonic-build
+```
+Run the `build.sh` script (modify to add `--release` flags if needed):
+```
+./build.sh
+```
+The output `fc` and `gc` binaries will be in
+`target/armv7-unknown-linux-gnueabihf/debug/` or
+`target/armv7-unknown-linux-gnueabihf/release/` depending on the flags provided to the
+build command.
