@@ -3,7 +3,7 @@ Description=Reticulum Mavlink Flight Controller Daemon
 After=network.target
 
 [Service]
-ExecStart=/home/root/fc/run-fc.sh
+ExecStart=/usr/bin/rns-mavlink-fc.sh
 WorkingDirectory=/home/root/fc
 User=root
 Group=root
