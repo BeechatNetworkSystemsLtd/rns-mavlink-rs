@@ -5,9 +5,9 @@ set -x
 
 . /opt/yocto-sdk/environment-setup-cortexa7t2hf-neon-vfpv4-ostl-linux-gnueabi
 rustup target add armv7-unknown-linux-gnueabihf
-cargo build --release
-cargo build --release --bin fc
-cargo build --release --bin gc
+cargo build --release --target "armv7-unknown-linux-gnueabihf"
+cargo build --release --target "armv7-unknown-linux-gnueabihf" --bin fc
+cargo build --release --target "armv7-unknown-linux-gnueabihf" --bin gc
 ./create-ota.sh
 
 exit 0
