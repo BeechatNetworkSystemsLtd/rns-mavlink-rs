@@ -1,8 +1,8 @@
 log_level = "debug"
 log_throughput = true
 log_mavlink = 1000000
-#gc_udp_address = "192.168.1.100"   # overrides subnet search
-gc_udp_subnet = "192.168.1.0"
+#gc_udp_address = "192.168.10.100"   # overrides subnet search
+gc_udp_subnet = "192.168.10.0"
 gc_udp_port = 14550
 gc_reply_port = 9999
 fc_destination = "279640b525d99a9b835227a6ae39fdc2"
