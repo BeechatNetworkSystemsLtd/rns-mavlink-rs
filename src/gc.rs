@@ -271,14 +271,14 @@ impl Gc {
         let mut buf = vec![0u8; 2usize.pow(16)];
         loop {
           // read socket
-          match time::timeout(ground_station_timeout, socket.recv_from(&mut buf)).await {
+          match time::timeout(ground_station_timeout, socket.recv_from(&mut buf[1..])).await {
             Ok(Ok((size, src))) => {
               if size == 0 {
                 log::warn!("zero size UDP packet data");
                 continue
               }
               throughput.lock().await.ground_station_bytes(size as u64);
-              let data = &buf[..size];
+              let data = &buf[..size+1];
               match str::from_utf8(data) {
                 Ok(text) => log::trace!("received from {}: {}", src, text),
                 Err(_) => log::trace!("received non-UTF8 data from {}: {:?}", src, data),
