@@ -8,13 +8,15 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use rns_mavlink::dashboard::{
-    error_response, fetch_journalctl_logs, get_logs_page, get_page, ok_response, LogsResponse,
-    DEFAULT_LOG_LINES, MAX_LOG_LINES, PLUGIN_TLS_CERT_FILE, PLUGIN_TLS_KEY_FILE,
+    error_response, fetch_journalctl_logs, fetch_recent_stats_line, get_logs_page, get_page,
+    ok_response, parse_stats_line, LogsResponse, ServiceStats, DEFAULT_LOG_LINES, MAX_LOG_LINES,
+    PLUGIN_TLS_CERT_FILE, PLUGIN_TLS_KEY_FILE, STATS_LOOKBACK_SECS,
 };
 use rns_mavlink::fc::{Config, CONFIG_PATH};
 
 const SERVICE_NAME: &str = "rns-mavlink-fc.service";
 const PAGE_TITLE: &str = "RNS-Mavlink FC Dashboard";
+const EXTRA_STAT_LABEL: &str = "Serial port bytes";
 
 #[derive(Clone)]
 struct AppState {
@@ -47,7 +49,13 @@ fn default_log_lines() -> u32 {
 }
 
 async fn handler_get_page(State(state): State<AppState>) -> Html<String> {
-    get_page(PAGE_TITLE, CONFIG_PATH, &state.destination_hash, SERVICE_NAME)
+    get_page(
+        PAGE_TITLE,
+        CONFIG_PATH,
+        &state.destination_hash,
+        SERVICE_NAME,
+        Some(EXTRA_STAT_LABEL),
+    )
 }
 
 async fn handler_get_logs_page() -> Html<String> {
@@ -104,6 +112,30 @@ async fn handler_get_logs(Query(query): Query<LogsQuery>) -> impl IntoResponse {
     }
 }
 
+async fn handler_get_stats() -> impl IntoResponse {
+    match fetch_recent_stats_line(SERVICE_NAME, STATS_LOOKBACK_SECS) {
+        Ok(Some(line)) => {
+            let parsed = parse_stats_line(&line);
+            let stats = ServiceStats {
+                fresh: true,
+                timestamp: parsed.timestamp,
+                link_in_bps: parsed.link_in_bps,
+                link_out_bps: parsed.link_out_bps,
+                packets_in_per_s: parsed.packets_in_per_s,
+                packets_out_per_s: parsed.packets_out_per_s,
+                total_packets_in: parsed.total_packets_in,
+                total_packets_out: parsed.total_packets_out,
+                total_bytes_in: parsed.total_bytes_in,
+                total_bytes_out: parsed.total_bytes_out,
+                extra: parsed.total_serial_port_bytes,
+            };
+            (StatusCode::OK, Json(stats)).into_response()
+        }
+        Ok(None) => (StatusCode::OK, Json(ServiceStats::default())).into_response(),
+        Err(err) => error_response(StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
+    }
+}
+
 async fn handler_get_destination(State(state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(DestinationResponse { destination_hash: state.destination_hash }))
 }
@@ -116,6 +148,7 @@ pub async fn start_server(bind_addr: SocketAddr, destination_hash: String) -> Re
         .route("/api/config", get(handler_get_config).put(handler_put_config))
         .route("/api/restart", post(handler_restart))
         .route("/api/logs", get(handler_get_logs))
+        .route("/api/stats", get(handler_get_stats))
         .route("/api/destination", get(handler_get_destination))
         .with_state(state);
 

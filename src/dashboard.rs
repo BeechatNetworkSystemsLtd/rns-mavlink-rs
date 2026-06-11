@@ -9,6 +9,8 @@ pub const PLUGIN_TLS_KEY_FILE: &str = "plugin-tls.key";
 pub const DEFAULT_LOG_LINES: u32 = 100;
 pub const MAX_LOG_LINES: u32 = 5000;
 
+pub const STATS_LOOKBACK_SECS: u64 = 5;
+
 #[derive(Debug, Serialize)]
 pub struct MessageResponse {
     pub detail: String,
@@ -17,6 +19,36 @@ pub struct MessageResponse {
 #[derive(Debug, Serialize)]
 pub struct LogsResponse {
     pub text: String,
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ServiceStats {
+    pub fresh: bool,
+    pub timestamp: Option<String>,
+    pub link_in_bps: Option<u32>,
+    pub link_out_bps: Option<u32>,
+    pub packets_in_per_s: Option<u32>,
+    pub packets_out_per_s: Option<u32>,
+    pub total_packets_in: Option<u64>,
+    pub total_packets_out: Option<u64>,
+    pub total_bytes_in: Option<u64>,
+    pub total_bytes_out: Option<u64>,
+    pub extra: Option<u64>,
+}
+
+#[derive(Debug, Default)]
+pub struct ParsedStatsLine {
+    pub timestamp: Option<String>,
+    pub link_in_bps: Option<u32>,
+    pub link_out_bps: Option<u32>,
+    pub packets_in_per_s: Option<u32>,
+    pub packets_out_per_s: Option<u32>,
+    pub total_packets_in: Option<u64>,
+    pub total_packets_out: Option<u64>,
+    pub total_bytes_in: Option<u64>,
+    pub total_bytes_out: Option<u64>,
+    pub total_ground_station_bytes: Option<u64>,
+    pub total_serial_port_bytes: Option<u64>,
 }
 
 pub fn error_response(status: StatusCode, detail: impl Into<String>) -> impl IntoResponse {
@@ -47,6 +79,116 @@ pub fn fetch_journalctl_logs(service_name: &str, lines: u32) -> Result<String, S
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+pub fn fetch_recent_stats_line(
+    service_name: &str,
+    lookback_secs: u64,
+) -> Result<Option<String>, String> {
+    let since_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("system time error: {e}"))?
+        .as_secs()
+        .saturating_sub(lookback_secs);
+    let since_arg = format!("@{since_ts}");
+    let output = std::process::Command::new("journalctl")
+        .args([
+            "-u",
+            service_name,
+            "--since",
+            &since_arg,
+            "--no-pager",
+            "-o",
+            "cat",
+        ])
+        .output()
+        .map_err(|err| format!("Failed to run journalctl: {err}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "journalctl exited with status {}: {stderr}",
+            output.status
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .rev()
+        .find(|l| l.contains("link in B/s"))
+        .map(|s| s.to_string()))
+}
+
+pub fn parse_stats_line(line: &str) -> ParsedStatsLine {
+    ParsedStatsLine {
+        timestamp: parse_log_timestamp(line),
+        link_in_bps: extract_u32(line, "link in B/s"),
+        link_out_bps: extract_u32(line, "link out B/s"),
+        packets_in_per_s: extract_u32(line, "packets in / s"),
+        packets_out_per_s: extract_u32(line, "packets out / s"),
+        total_packets_in: extract_u64(line, "total packets in"),
+        total_packets_out: extract_u64(line, "total packets out"),
+        total_bytes_in: extract_u64(line, "total bytes in"),
+        total_bytes_out: extract_u64(line, "total bytes out"),
+        total_ground_station_bytes: extract_u64(line, "total ground station bytes"),
+        total_serial_port_bytes: extract_u64(line, "total serial port bytes"),
+    }
+}
+
+fn parse_log_timestamp(line: &str) -> Option<String> {
+    let start = line.find('[')?;
+    let end = line[start + 1..].find(']')?;
+    let inside = &line[start + 1..start + 1 + end];
+    let ts_end = inside.find(' ').unwrap_or(inside.len());
+    Some(inside[..ts_end].to_string())
+}
+
+fn extract_u64(line: &str, key: &str) -> Option<u64> {
+    let idx = line.find(key)?;
+    let after = &line[idx + key.len()..];
+    let value_str = after.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+    let end = value_str
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(value_str.len());
+    if end == 0 {
+        return None;
+    }
+    value_str[..end].parse().ok()
+}
+
+fn extract_u32(line: &str, key: &str) -> Option<u32> {
+    extract_u64(line, key).and_then(|v| u32::try_from(v).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_GC: &str = "[2026-06-11T00:28:36Z INFO  rns_mavlink] link in B/s: 12, link out B/s: 34, packets in / s: 5, packets out / s: 6, total packets in: 700, total packets out: 800 total bytes in: 9000, total bytes out: 10000, total ground station bytes: 11000";
+    const SAMPLE_FC: &str = "[2026-06-11T00:28:36Z INFO  rns_mavlink] link in B/s: 1, link out B/s: 2, packets in / s: 3, packets out / s: 4, total packets in: 5, total packets out: 6 total bytes in: 7, total bytes out: 8, total serial port bytes: 9";
+
+    #[test]
+    fn parses_gc_stats_line() {
+        let p = parse_stats_line(SAMPLE_GC);
+        assert_eq!(p.timestamp.as_deref(), Some("2026-06-11T00:28:36Z"));
+        assert_eq!(p.link_in_bps, Some(12));
+        assert_eq!(p.link_out_bps, Some(34));
+        assert_eq!(p.packets_in_per_s, Some(5));
+        assert_eq!(p.packets_out_per_s, Some(6));
+        assert_eq!(p.total_packets_in, Some(700));
+        assert_eq!(p.total_packets_out, Some(800));
+        assert_eq!(p.total_bytes_in, Some(9000));
+        assert_eq!(p.total_bytes_out, Some(10000));
+        assert_eq!(p.total_ground_station_bytes, Some(11000));
+        assert_eq!(p.total_serial_port_bytes, None);
+    }
+
+    #[test]
+    fn parses_fc_stats_line() {
+        let p = parse_stats_line(SAMPLE_FC);
+        assert_eq!(p.link_in_bps, Some(1));
+        assert_eq!(p.total_serial_port_bytes, Some(9));
+        assert_eq!(p.total_ground_station_bytes, None);
+    }
 }
 
 const BASE_STYLES: &str = r#"
@@ -274,6 +416,33 @@ const DASHBOARD_APP_STYLES: &str = r#"
 .logs-card .logs-output {
   max-height: 24rem;
 }
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.stat {
+  background: #0b1220;
+  border: 1px solid #1f2937;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}
+.stat-label {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+}
+.stat-value {
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+.stat-value.is-stale {
+  color: #475569;
+}
 "#;
 
 const LOGS_PAGE_STYLES: &str = r#"
@@ -393,6 +562,81 @@ const DASHBOARD_SCRIPT: &str = r#"
   reloadBtn.addEventListener('click', loadConfig);
   restartBtn.addEventListener('click', restartService);
 
+  function fmtNum(n) { return n.toLocaleString(); }
+  function fmtBytes(n) {
+    if (n < 1024) return fmtNum(n) + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  }
+  function fmtBps(n) { return fmtBytes(n) + '/s'; }
+  function fmtPps(n) { return fmtNum(n) + '/s'; }
+
+  const statsConfig = [
+    { id: 'stat-link-in', key: 'link_in_bps', format: fmtBps },
+    { id: 'stat-link-out', key: 'link_out_bps', format: fmtBps },
+    { id: 'stat-pps-in', key: 'packets_in_per_s', format: fmtPps },
+    { id: 'stat-pps-out', key: 'packets_out_per_s', format: fmtPps },
+    { id: 'stat-total-pkts-in', key: 'total_packets_in', format: fmtNum },
+    { id: 'stat-total-pkts-out', key: 'total_packets_out', format: fmtNum },
+    { id: 'stat-total-bytes-in', key: 'total_bytes_in', format: fmtBytes },
+    { id: 'stat-total-bytes-out', key: 'total_bytes_out', format: fmtBytes },
+    { id: 'stat-extra', key: 'extra', format: fmtBytes },
+  ];
+  const statsUpdated = document.getElementById('stats-updated');
+
+  function markStatsStale(label) {
+    for (const cfg of statsConfig) {
+      const el = document.getElementById(cfg.id);
+      if (el) {
+        el.textContent = '-';
+        el.classList.add('is-stale');
+      }
+    }
+    if (statsUpdated) statsUpdated.textContent = label || 'no recent data';
+  }
+
+  async function pollStats() {
+    try {
+      const resp = await fetch('/api/stats');
+      if (!resp.ok) {
+        markStatsStale('stats unavailable');
+        return;
+      }
+      const data = await resp.json();
+      const fresh = data.fresh === true;
+      if (!fresh) {
+        markStatsStale('no recent data');
+        return;
+      }
+      for (const cfg of statsConfig) {
+        const el = document.getElementById(cfg.id);
+        if (!el) continue;
+        const val = data[cfg.key];
+        if (val === null || val === undefined) {
+          el.textContent = '-';
+          el.classList.add('is-stale');
+        } else {
+          el.textContent = cfg.format(val);
+          el.classList.remove('is-stale');
+        }
+      }
+      if (statsUpdated) {
+        if (data.timestamp) {
+          const parts = data.timestamp.split('T');
+          statsUpdated.textContent = parts[1] ? parts[1].replace('Z', '') : data.timestamp;
+        } else {
+          statsUpdated.textContent = 'updated';
+        }
+      }
+    } catch (err) {
+      markStatsStale('stats unavailable');
+    }
+  }
+
+  pollStats();
+  setInterval(pollStats, 5000);
+
   const logsToggle = document.getElementById('logs-toggle');
   const logsPanel = document.getElementById('logs-panel');
   const logsRefresh = document.getElementById('logs-refresh');
@@ -472,7 +716,14 @@ pub fn get_page(
     config_name: &str,
     destination_hash: &str,
     service_name: &str,
+    extra_stat_label: Option<&str>,
 ) -> Html<String> {
+    let extra_stat_html = match extra_stat_label {
+        Some(label) => format!(
+            r#"<div class="stat"><div class="stat-label">{label}</div><div class="stat-value" id="stat-extra">-</div></div>"#
+        ),
+        None => String::new(),
+    };
     Html(format!(
         r#"<!doctype html>
 <html lang="en">
@@ -490,6 +741,23 @@ pub fn get_page(
     <div class="destination-hash">
       <span class="label">Destination:</span>
       <span class="hash">{destination_hash}</span>
+    </div>
+
+    <div class="card stats-card">
+      <div class="card-header">
+        <div class="card-title">Statistics<span class="card-title-sub" id="stats-updated">no recent data</span></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-label">Link in</div><div class="stat-value is-stale" id="stat-link-in">-</div></div>
+        <div class="stat"><div class="stat-label">Link out</div><div class="stat-value is-stale" id="stat-link-out">-</div></div>
+        <div class="stat"><div class="stat-label">Packets in</div><div class="stat-value is-stale" id="stat-pps-in">-</div></div>
+        <div class="stat"><div class="stat-label">Packets out</div><div class="stat-value is-stale" id="stat-pps-out">-</div></div>
+        <div class="stat"><div class="stat-label">Total packets in</div><div class="stat-value is-stale" id="stat-total-pkts-in">-</div></div>
+        <div class="stat"><div class="stat-label">Total packets out</div><div class="stat-value is-stale" id="stat-total-pkts-out">-</div></div>
+        <div class="stat"><div class="stat-label">Total bytes in</div><div class="stat-value is-stale" id="stat-total-bytes-in">-</div></div>
+        <div class="stat"><div class="stat-label">Total bytes out</div><div class="stat-value is-stale" id="stat-total-bytes-out">-</div></div>
+        {extra_stat_html}
+      </div>
     </div>
 
     <div class="card">
@@ -538,6 +806,7 @@ pub fn get_page(
         config_name = config_name,
         destination_hash = destination_hash,
         service_name = service_name,
+        extra_stat_html = extra_stat_html,
         base_styles = BASE_STYLES,
         app_styles = DASHBOARD_APP_STYLES,
         script = DASHBOARD_SCRIPT,
