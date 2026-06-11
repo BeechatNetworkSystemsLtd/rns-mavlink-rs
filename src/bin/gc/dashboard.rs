@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
@@ -8,11 +8,13 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use rns_mavlink::dashboard::{
-    error_response, get_page, ok_response, PLUGIN_TLS_CERT_FILE, PLUGIN_TLS_KEY_FILE,
+    error_response, fetch_journalctl_logs, get_logs_page, get_page, ok_response, LogsResponse,
+    DEFAULT_LOG_LINES, MAX_LOG_LINES, PLUGIN_TLS_CERT_FILE, PLUGIN_TLS_KEY_FILE,
 };
 use rns_mavlink::gc::{Config, CONFIG_PATH};
 
 const SERVICE_NAME: &str = "rns-mavlink-gc.service";
+const PAGE_TITLE: &str = "RNS-Mavlink GC Dashboard";
 
 #[derive(Clone)]
 struct AppState {
@@ -34,8 +36,22 @@ struct DestinationResponse {
     destination_hash: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct LogsQuery {
+    #[serde(default = "default_log_lines")]
+    lines: u32,
+}
+
+fn default_log_lines() -> u32 {
+    DEFAULT_LOG_LINES
+}
+
 async fn handler_get_page(State(state): State<AppState>) -> Html<String> {
-    get_page("RNS-Mavlink GC Dashboard", CONFIG_PATH, &state.destination_hash)
+    get_page(PAGE_TITLE, CONFIG_PATH, &state.destination_hash, SERVICE_NAME)
+}
+
+async fn handler_get_logs_page() -> Html<String> {
+    get_logs_page(PAGE_TITLE, SERVICE_NAME)
 }
 
 async fn handler_get_config() -> impl IntoResponse {
@@ -80,6 +96,14 @@ async fn handler_restart() -> impl IntoResponse {
     }
 }
 
+async fn handler_get_logs(Query(query): Query<LogsQuery>) -> impl IntoResponse {
+    let lines = query.lines.clamp(1, MAX_LOG_LINES);
+    match fetch_journalctl_logs(SERVICE_NAME, lines) {
+        Ok(text) => (StatusCode::OK, Json(LogsResponse { text })).into_response(),
+        Err(err) => error_response(StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
+    }
+}
+
 async fn handler_get_destination(State(state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(DestinationResponse { destination_hash: state.destination_hash }))
 }
@@ -88,8 +112,10 @@ pub async fn start_server(bind_addr: SocketAddr, destination_hash: String) -> Re
     let state = AppState { destination_hash };
     let app = Router::new()
         .route("/", get(handler_get_page))
+        .route("/logs", get(handler_get_logs_page))
         .route("/api/config", get(handler_get_config).put(handler_put_config))
         .route("/api/restart", post(handler_restart))
+        .route("/api/logs", get(handler_get_logs))
         .route("/api/destination", get(handler_get_destination))
         .with_state(state);
 
