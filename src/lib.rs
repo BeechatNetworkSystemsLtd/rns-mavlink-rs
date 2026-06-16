@@ -319,7 +319,7 @@ impl Throughput {
     };
     log::info!("link in B/s: {in_bps}, link out B/s: {out_bps}, \
       packets in / s: {in_pps}, packets out / s: {out_pps}, \
-      total packets in: {}, total packets out: {} \
+      total packets in: {}, total packets out: {}, \
       total bytes in: {}, total bytes out: {}\
       {extra_string}",
       self.packets_in_total, self.packets_out_total, self.link_recv_total_bytes,
