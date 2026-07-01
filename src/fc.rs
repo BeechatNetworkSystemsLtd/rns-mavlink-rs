@@ -279,7 +279,8 @@ impl Fc {
                   let data = payload.as_slice();
                   if data[0] == 0x0 {
                     // data packet
-                    match port_writer.write_all(&payload.as_slice()).await {
+                    let payload = &data[1..];
+                    match port_writer.write_all(payload).await {
                       Ok(()) => log::trace!("port sent {} bytes", payload.len()),
                       Err(err) => {
                         log::error!("port error sending bytes: {err:?}");

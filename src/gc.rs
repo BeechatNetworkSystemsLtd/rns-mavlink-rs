@@ -343,11 +343,12 @@ impl Gc {
                   let data = payload.as_slice();
                   if data[0] == 0x0 {
                     // data packet
+                    let payload = &data[1..];
                     if let Some(link_id) = link_state.lock().await
                       .authenticated_link_id()
                     {
                       if link_id != link_event.id {
-                        log::warn!("received data event on non-autheticated link {}",
+                        log::warn!("received data event on non-authenticated link {}",
                           link_event.id);
                         let _ = transport.link_close(link_event.id).await.map_err(|err|
                           log::error!("error closing link {link_id}: {err:?}"));
