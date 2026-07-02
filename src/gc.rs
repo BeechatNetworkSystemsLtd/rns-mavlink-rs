@@ -352,10 +352,11 @@ impl Gc {
                           link_event.id);
                         let _ = transport.link_close(link_event.id).await.map_err(|err|
                           log::error!("error closing link {link_id}: {err:?}"));
-                      }
-                      if let Some(target) = ground_station_address.lock().await.clone() {
+                      } else if let Some(target) =
+                        ground_station_address.lock().await.clone()
+                      {
                         log::trace!("send payload ({}) to {target}", payload.len());
-                        match socket.send_to(&payload.as_slice(), target).await {
+                        match socket.send_to(payload, target).await {
                           Ok(n) => log::trace!("socket sent {n} bytes"),
                           Err(err) => {
                             log::error!("socket error sending bytes: {err:?}");
@@ -366,7 +367,7 @@ impl Gc {
                           throughput.lock().await.recv_packet(payload.len() as u32);
                         }
                         if let Some(mavlink_log) = mavlink_log.clone() {
-                          let frames = mavlink_parser.parse(payload.as_slice());
+                          let frames = mavlink_parser.parse(payload);
                           log_mavlink(mavlink_log, "flight controller link", frames).await;
                         }
                       } else {

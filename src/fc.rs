@@ -291,7 +291,7 @@ impl Fc {
                       throughput.lock().await.recv_packet(payload.len() as u32);
                     }
                     if let Some(mavlink_log) = mavlink_log.clone() {
-                      let frames = mavlink_parser.parse(payload.as_slice());
+                      let frames = mavlink_parser.parse(payload);
                       log_mavlink(mavlink_log, "ground station link", frames).await;
                     }
                   } else {
