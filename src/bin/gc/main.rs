@@ -105,7 +105,8 @@ async fn main() -> Result<(), process::ExitCode> {
       {forward}");
     let _ = transport.iface_manager().lock().await.spawn(
     UdpInterface::new(format!("0.0.0.0:{}", cmd.udp_listen_port.unwrap()),
-      Some(cmd.udp_forward_address.unwrap().to_string())),
+      Some(cmd.udp_forward_address.unwrap().to_string()),
+      false),
     UdpInterface::spawn);
     None
   };

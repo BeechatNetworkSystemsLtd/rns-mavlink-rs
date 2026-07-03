@@ -105,7 +105,7 @@ async fn main() {
   let id = PrivateIdentity::new_from_name("mavlink-rns-fc");
   let transport = Transport::new(TransportConfig::new("fc", &id, true));
   let _ = transport.iface_manager().lock().await.spawn(
-    UdpInterface::new("0.0.0.0:4243", Some("192.168.1.131:4242")),
+    UdpInterface::new("0.0.0.0:4243", Some("192.168.1.131:4242"), false),
     UdpInterface::spawn);
     //TcpClient::new("192.168.1.131:4242"),
     //TcpClient::spawn);
