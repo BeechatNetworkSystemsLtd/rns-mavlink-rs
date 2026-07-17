@@ -46,5 +46,17 @@ version = "0.1.*"
 git = "https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs"
 version = "0.1.*"
 
+# patches pin version to fix radio config timeout error
+[patch."https://github.com/BeechatNetworkSystemsLtd/kaonic-radio"]
+kaonic-ctrl = { git = "https://github.com/spearman/kaonic-radio", rev = "3abf34ec5c4a57bdaa41c3b9ab12df7db03496a0" }
+kaonic-frame = { git = "https://github.com/spearman/kaonic-radio", rev = "3abf34ec5c4a57bdaa41c3b9ab12df7db03496a0" }
+kaonic-net = { git = "https://github.com/spearman/kaonic-radio", rev = "3abf34ec5c4a57bdaa41c3b9ab12df7db03496a0" }
+radio-common = { git = "https://github.com/spearman/kaonic-radio", rev = "3abf34ec5c4a57bdaa41c3b9ab12df7db03496a0" }
+
+[patch."https://github.com/BeechatNetworkSystemsLtd/kaonic-gateway"]
+kaonic-gateway = { git = "https://github.com/spearman/kaonic-gateway", rev = "af4940a97fb290be80c83303f15966db2a08e4c1" }
+kaonic-reticulum = { git = "https://github.com/spearman/kaonic-gateway", rev = "af4940a97fb290be80c83303f15966db2a08e4c1" }
+kaonic-vpn = { git = "https://github.com/spearman/kaonic-gateway", rev = "af4940a97fb290be80c83303f15966db2a08e4c1" }
+
 [patch."https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs"]
 reticulum = { git = "https://github.com/spearman/Reticulum-rs", branch = "main" }
